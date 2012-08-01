@@ -10,6 +10,8 @@ import re
 import sqlite3
 #import pprint
 
+RESULT_FILE = 'data/results.sqlite'
+
 columns = [('volume', 'text'),
            ('issue', 'text'),
            ('pub_year', 'integer'),
@@ -146,7 +148,7 @@ def getArticleRows(webEnv, start_result=0, num_results = 10):
     return extractInfo(fetchWebEnv(webEnv, start_result, num_results))
 
 def create_sql_connection():
-    conn = sqlite3.connect('result_sqlite.db')
+    conn = sqlite3.connect(RESULT_FILE)
     c = conn.cursor()
     # Create table
     table_names = map(lambda x : x[0], c.execute("select name from sqlite_master where type = 'table'").fetchall())
@@ -172,7 +174,7 @@ def getResults(mindate, maxdate):
         c.execute('DELETE FROM temp_new_results')
         c.executemany('INSERT INTO temp_new_results VALUES (' + ','.join(map(lambda x : '?', column_headers)) + ')', row_data)
         res = c.execute('INSERT INTO results SELECT * FROM temp_new_results WHERE abstract_hash NOT IN (SELECT abstract_hash FROM results)')
-        log('\tInsert result: ', res)
+        log('\tInsert result: ', res.rowcount)
         # Save (commit) the changes
         conn.commit()
 

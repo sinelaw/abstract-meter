@@ -1,0 +1,3 @@
+set datafile separator ","
+plot "/tmp/brain.csv" using 1:2 with lp, "/tmp/cancer.csv" using 1:2 with lp, "/tmp/heart.csv" using 1:2  with lp, "/tmp/cardio.csv" using 1:2 with lp
+

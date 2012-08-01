@@ -11,6 +11,7 @@ import sqlite3
 #import pprint
 
 RESULT_FILE = 'data/results.sqlite'
+XMLS_OUTPUT_DIR = 'data/xmls'
 
 columns = [('volume', 'text'),
            ('issue', 'text'),
@@ -23,6 +24,17 @@ columns = [('volume', 'text'),
            ('abstract_hash', 'integer')]
 
 column_headers = map(lambda c : c[0], columns)
+
+import os, errno
+
+# thanks to http://stackoverflow.com/a/600612/562906
+def mkdir_p(path):
+    try:
+        os.makedirs(path)
+    except OSError as exc: # Python >2.5
+        if exc.errno == errno.EEXIST:
+            pass
+        else: raise
 
 def fix_unicode(s):
     if type(s) == unicode:
@@ -68,8 +80,8 @@ def fetchWebEnv(web_env, start_result, num_results):
     url = 'http://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&mode=xml&query_key=1&WebEnv=%s&retstart=%d&retmax=%d' % (web_env, start_result, num_results)
     log('getting fetch url...', url)
     data = urllib.urlopen(url).read()
-
-    fd, name = tempfile.mkstemp(suffix='.xml', dir=".")
+    mkdir_p(XMLS_OUTPUT_DIR)
+    fd, name = tempfile.mkstemp(suffix='.xml', dir=XMLS_OUTPUT_DIR)
     os.fdopen(fd, 'w').write(data)
 
     log('done, xml saved to "%s". parsing...' % (name,))

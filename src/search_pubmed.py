@@ -21,9 +21,12 @@ columns = [('volume', 'text'),
            ('article_title', 'text'),
            ('abstract_text', 'text'),
            ('affiliation',   'text'),
-           ('abstract_hash', 'integer')]
+           ('abstract_hash', 'integer'),
+           ('abstract_alpha', 'text'),
+           ('pmid', 'text')]
 
 column_headers = map(lambda c : c[0], columns)
+nonalpha_pattern = re.compile('[^a-zA-Z 0-9\t]*')
 
 import os, errno
 
@@ -116,7 +119,11 @@ def strip_tags(text):
 
 emailRegex = re.compile(r"(?:^|\s)(?P<email>[-a-z0-9_.]+@(?:[-a-z0-9]+\.)+[a-z]{2,6})\.?",re.IGNORECASE)
 
+def strip_nonalpha(text):
+    return nonalpha_pattern.sub('', text.encode('ascii', 'ignore'))
+
 def process_article(article):
+    pmid = getXmlValue(article.xml_select('.//MedlineCitation')[0], './/PMID')
     article_meta = article.xml_select('.//Article')[0]
     journal_node = article_meta.xml_select('.//Journal')[0]
     journal_title = getXmlValue(journal_node, './/Title')
@@ -153,7 +160,9 @@ def process_article(article):
                 article_title = article_title,
                 abstract_text = abstract_text,
                 affiliation = affiliation,
-                abstract_hash = hash(abstract_text))
+                abstract_hash = hash(abstract_text),
+                abstract_alpha = strip_nonalpha(abstract_text),
+                pmid = pmid)
 
 
 def getArticleRows(webEnv, start_result=0, num_results = 10):
@@ -170,8 +179,9 @@ def create_sql_connection():
     c.execute(getCreateTableQuery('temp_new_results', True))
     return (conn, c)
     
-def getResults(mindate, maxdate):
+def getResults(mindate, maxdate, start_chunk = 0):
     chunk_size = 10000
+    start_chunk = int(start_chunk)
     webEnv, count = getSearchWebEnv(mindate, maxdate)
     log('Total results:', count)
     num_chunks = (count / chunk_size) + 1
@@ -179,7 +189,7 @@ def getResults(mindate, maxdate):
 
     (conn, c) = create_sql_connection()
 
-    for i in xrange(num_chunks):
+    for i in xrange(start_chunk, num_chunks):
         log('Chunk ', i, 'of', num_chunks)
         row_data = getArticleRows(webEnv, start_result = i*chunk_size, num_results = chunk_size)
         log('\tAbstracts: ', len(row_data))
@@ -205,6 +215,6 @@ if __name__ == '__main__':
     import sys
     args = sys.argv[1:]
     if (len(args) < 2):
-        log('Usage: %s <start date YYYY/MM/DD> <end date YYYY/MM/DD>' % (sys.argv[0],))
+        log('Usage: %s <start date YYYY/MM/DD> <end date YYYY/MM/DD> [start chunk number, default=0]' % (sys.argv[0],))
         sys.exit(1)
     getResults(*args)

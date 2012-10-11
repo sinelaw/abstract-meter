@@ -180,7 +180,7 @@ def create_sql_connection():
     return (conn, c)
     
 def getResults(mindate, maxdate, start_chunk = 0):
-    chunk_size = 10000
+    chunk_size = 1000
     start_chunk = int(start_chunk)
     webEnv, count = getSearchWebEnv(mindate, maxdate)
     log('Total results:', count)

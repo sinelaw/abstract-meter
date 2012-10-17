@@ -5,12 +5,12 @@ import Text.XML.HXT.Core
 import Text.XML.HXT.Curl -- use libcurl for HTTP access
                          -- only necessary when reading http://...
 import qualified Data.Aeson as Aeson
-import qualified Data.HashMap.Strict as HashMap
+import qualified Data.HashMap.Strict as M
 import Data.Hashable (Hashable)
 import Data.Tree.NTree.TypeDefs 
 import System.Environment
 import qualified Data.Vector as Vector
-
+import Data.Maybe (isJust, fromJust)
 import qualified Data.Text as T
  
 
@@ -33,22 +33,29 @@ main
       print $ xmlTreeToJSON rootElem
       return ()
       
-liftObject :: (HashMap.HashMap T.Text Aeson.Value -> HashMap.HashMap T.Text Aeson.Value) -> Aeson.Value -> Aeson.Value
-liftObject f (Aeson.Object map) = Aeson.Object (f map)
-liftObject f _ = error "Can only process json object values"
+concatMapValues :: (Eq k, Hashable k) => [M.HashMap k v] -> M.HashMap k [v] 
+concatMapValues = foldr (M.unionWith (++) . M.map (:[])) M.empty 
 
-concatMapValues :: (Eq k, Hashable k) => [HashMap.HashMap k v] -> HashMap.HashMap k [v] 
-concatMapValues maps = foldr concatMapValue' HashMap.empty maps
-  where concatMapValue' map res = HashMap.unionWith (++) (HashMap.map (:[]) map) res
-  
-xmlTreeToJSON :: XmlTree -> Aeson.Value
-xmlTreeToJSON (NTree (XTag qName attrs) children) = Aeson.object [((T.pack $ show qName), 
-                                                                   liftObject (arrayValuesToJSONArrays . concatMapValues) $ map xmlTreeToJSON children
-                                                                   )]
-  where arrayValuesToJSONArrays :: (Eq k, Hashable k) => HashMap.HashMap k [Aeson.Value] -> HashMap.HashMap k Aeson.Value
-        arrayValuesToJSONArrays map = HashMap.map (Aeson.Array . Vector.fromList) map
+
+xmlTreeToJSON :: XmlTree -> Maybe (T.Text, Aeson.Value)
+xmlTreeToJSON (NTree (XTag qName attrs) children) = (T.pack (show qName), 
+                                                     Aeson.object $ map xmlTreeToJSON children)
+                
+  -- where arrayValuesToJSONArrays :: (Eq k, Hashable k) => M.HashMap k [Aeson.Value] -> M.HashMap k Aeson.Value
+  --       arrayValuesToJSONArrays = M.map fromJust
+  --                               . M.filter isJust
+  --                               . M.map (\v -> case v of 
+  --                                           []  -> Nothing -- will be discarded
+  --                                           [x] -> Just x  -- don't store as array, just a single value
+  --                                           xss -> Just $ Aeson.Array . Vector.fromList $ xss) -- arrays with more than one element are kept
+                                
+  --       -- apply on object internal maps, ignore non-object json values (don't apply on arrays)
+  --       fmapObj :: (Aeson.Object -> Aeson.Object) -> Aeson.Value -> Aeson.Value
+  --       fmapObj f (Aeson.Object objMap) = Aeson.Object (f objMap)
+  --       fmapObj f val                   = val 
+
           
-xmlTreeToJSON (NTree _ children) = Aeson.Null 
+xmlTreeToJSON (NTree _ children) = Nothing 
   --                          foldr addChild singleton children
   -- where
   --   addChild :: (NTree XmlTree) -> Aeson.Object -> Aeson.Object

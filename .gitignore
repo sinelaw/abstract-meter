@@ -1,3 +1,4 @@
+*~
 *.py[co]
 
 # Packages
@@ -30,3 +31,4 @@ pip-log.txt
 ENV/
 
 data/
+

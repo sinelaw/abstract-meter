@@ -3,6 +3,7 @@ where
  
 import Text.XML.HXT.Core
 import qualified Text.XML.HXT.DOM.XmlNode as XN
+import Text.XML.HXT.Expat -- TagSoup
 import Text.XML.HXT.Curl -- use libcurl for HTTP access
                          -- only necessary when reading http://...
 import qualified Data.Aeson as Aeson
@@ -25,11 +26,14 @@ main :: IO ()
 main = do
        [src] <- getArgs
        [rootElem] <- runX ( readDocument [withValidate no
+                                          --,withTagsSoup
+                                         ,withExpat True
                                          ,withCurl []
                                          ] src
                             >>> getChildren 
                             >>> isElem
                           )
+       --print rootElem
        BS.putStr . Aeson.encode . wrapRoot $ xmlTreeToJSON rootElem
        return ()
       

@@ -76,12 +76,18 @@ wrapRoot :: Maybe (JSValueName, Aeson.Value) -> Aeson.Value
 wrapRoot Nothing       = Aeson.Null
 wrapRoot (Just (a, b)) = Aeson.object [(packJSValueName a, b)] 
 
+-- converts a map to a json value, usually resulting in a json object unless the map contains ONLY a single Text entry, 
+-- in which case the value produced is a json string
+tagMapToJSValue :: M.HashMap JSValueName Aeson.Value -> Aeson.Value
+tagMapToJSValue m = case (M.toList m) of
+  [(Text, val)] -> val
+  _             -> Aeson.Object . mapKeys packJSValueName $ m
+  
 xmlTreeToJSON :: XmlTree -> Maybe (JSValueName, Aeson.Value)
 xmlTreeToJSON node@(NTree (XTag qName attrs) children) 
   = Just (Tag (localPart qName), 
-          Aeson.Object objMap)
-  where objMap = mapKeys packJSValueName 
-               . arrayValuesToJSONArrays    -- unify into a single map,
+          tagMapToJSValue objMap)
+  where objMap = arrayValuesToJSONArrays    -- unify into a single map,
                . concatMapValues            -- grouping into arrays by pair name
                . map (uncurry M.singleton)  -- convert pairs to maps
                . (++) attrVals       
@@ -95,6 +101,7 @@ xmlTreeToJSON (NTree (XText str) _) = if (T.empty == text)
                                       then Nothing
                                       else Just $ (Text, Aeson.String text)
   where text = T.strip . T.pack $ str
+
 xmlTreeToJSON (NTree _ children) = Nothing 
                 
 

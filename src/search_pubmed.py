@@ -66,7 +66,7 @@ def fetchWebEnv(query_key, web_env, start_result, num_results, file_suffix):
     while True:
         sleep(0.5) # Don't do more than twice a second...
         data = urllib.urlopen(url).read()
-        if len(data) < 100:
+        if len(data) < 1000:
             if 'Unable to obtain query #1' in data:
                 log('got error, retrying...')
                 continue

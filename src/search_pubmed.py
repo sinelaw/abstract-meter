@@ -9,24 +9,10 @@ import os
 import re
 import sqlite3
 #import pprint
+from time import sleep
 
-RESULT_FILE = 'data/results.sqlite'
+
 XMLS_OUTPUT_DIR = 'data/xmls'
-
-columns = [('volume', 'text'),
-           ('issue', 'text'),
-           ('pub_year', 'integer'),
-           ('pub_month', 'text'),
-           ('journal_title', 'text'),
-           ('article_title', 'text'),
-           ('abstract_text', 'text'),
-           ('affiliation',   'text'),
-           ('abstract_hash', 'integer'),
-           ('abstract_alpha', 'text'),
-           ('pmid', 'text')]
-
-column_headers = map(lambda c : c[0], columns)
-nonalpha_pattern = re.compile('[^a-zA-Z 0-9\t]*')
 
 import os, errno
 
@@ -39,22 +25,16 @@ def mkdir_p(path):
             pass
         else: raise
 
-def fix_unicode(s):
-    if type(s) == unicode:
-        return s
-    elif type(s) != str:
-        return unicode(s)
-    try:
-        return s.decode('utf-8')
-    except:
-        log('Error decoding value:', type(s), repr(s))
-        raise
-
-            
 def log(*args):
     import sys
     print >>sys.stderr, ' '.join(map(unicode, args))
-    
+
+def getXmlValue(root, tagname):
+    for elem in root.xml_select(tagname):
+        for xml_child in elem.xml_children:
+            return xml_child.xml_value.strip()
+    return ''
+
 def getSearchWebEnv(mindate, maxdate):
     for datetext in [mindate, maxdate]:
         if (not re.match(r'\d{4}/\d{2}(/\d{2}){0,1}', datetext)):
@@ -76,140 +56,43 @@ def getSearchWebEnv(mindate, maxdate):
     #log('done. Search data saved to: ' + name)
     search_data = amara.parse(data, standalone=True)
     webEnv_str = search_data.xml_select('.//WebEnv').asString()
+    query_key = search_data.xml_select('.//QueryKey').asString()
     count = int(getXmlValue(search_data.xml_select('.//eSearchResult')[0], './/Count'))
-    return webEnv_str, count
+    return query_key, webEnv_str, count
 
-def fetchWebEnv(web_env, start_result, num_results):
-    url = 'http://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&mode=xml&query_key=1&WebEnv=%s&retstart=%d&retmax=%d' % (web_env, start_result, num_results)
+def fetchWebEnv(query_key, web_env, start_result, num_results, file_suffix):
+    url = 'http://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&mode=xml&query_key=%s&WebEnv=%s&retstart=%d&retmax=%d' % (query_key, web_env, start_result, num_results)
     log('getting fetch url...', url)
-    data = urllib.urlopen(url).read()
+    while True:
+        sleep(0.5) # Don't do more than twice a second...
+        data = urllib.urlopen(url).read()
+        if len(data) < 100:
+            if 'Unable to obtain query #1' in data:
+                log('got error, retrying...')
+                continue
+        break
     mkdir_p(XMLS_OUTPUT_DIR)
-    fd, name = tempfile.mkstemp(suffix='.xml', dir=XMLS_OUTPUT_DIR)
+    fd, name = tempfile.mkstemp(prefix='%s' % (file_suffix,), suffix='.xml', dir=XMLS_OUTPUT_DIR)
     os.fdopen(fd, 'w').write(data)
 
-    log('done, xml saved to "%s". parsing...' % (name,))
-    res = amara.parse(data, standalone=True)
-    log('done parsing.')
-    return res
+    log('done, xml saved to "%s"' % (name,))
 
-def searchAndFetch(mindate, maxdate, start_result, num_results):
-    return fetchWebEnv(getSearchWebEnv(mindate, maxdate), start_result, num_results)
+def show_date(dateStr):
+    return dateStr.replace("/","-")
 
-def getXmlValue(root, tagname):
-    for elem in root.xml_select(tagname):
-        for xml_child in elem.xml_children:
-            return xml_child.xml_value.strip()
-    return ''
-
-def authorDataToRow(author_data):
-    return [author_data[k] for k in column_headers]
-    
-def extractInfo(fetch_result):
-    log('Extracting data...')
-    article_sets = fetch_result.xml_select('.//PubmedArticleSet')
-    if (len(article_sets) == 0):
-        log('no result')
-        return []
-
-    articles = article_sets[0].xml_select('PubmedArticle')
-    return map(authorDataToRow, filter(lambda x: x is not None, map(process_article, articles)))
-
-def strip_tags(text):
-    return lxml.html.fromstring(text).text_content()
-
-emailRegex = re.compile(r"(?:^|\s)(?P<email>[-a-z0-9_.]+@(?:[-a-z0-9]+\.)+[a-z]{2,6})\.?",re.IGNORECASE)
-
-def strip_nonalpha(text):
-    return nonalpha_pattern.sub('', text.encode('ascii', 'ignore'))
-
-def process_article(article):
-    pmid = getXmlValue(article.xml_select('.//MedlineCitation')[0], './/PMID')
-    article_meta = article.xml_select('.//Article')[0]
-    journal_node = article_meta.xml_select('.//Journal')[0]
-    journal_title = getXmlValue(journal_node, './/Title')
-    journal_issue_node = journal_node.xml_select('.//JournalIssue')[0]
-
-    journal_pub_date = journal_issue_node.xml_select('.//PubDate')[0]
-    pub_year = getXmlValue(journal_issue_node, './/Year')
-    pub_month = getXmlValue(journal_issue_node, './/Month')
-    volume = getXmlValue(journal_issue_node, './/Volume')
-    issue = getXmlValue(journal_issue_node, './/Issue')
-
-    article_title = strip_tags(article_meta.xml_select('.//ArticleTitle')[0].xml_encode())
-    affiliation = getXmlValue(article_meta, './/Affiliation')
-    email_match = emailRegex.search(affiliation)
-    if email_match:
-        email = email_match.groupdict()['email']
-    else:
-        email = ''
-    try:
-        abstract_xml = article_meta.xml_select('.//AbstractText')[0]
-    except IndexError:
-        abstract_text = ''
-    else:
-        abstract_text = strip_tags(abstract_xml.xml_encode())
-
-    if 0 == len(abstract_text.strip()):
-        return None # don't care about articles with no abstract.
-
-    return dict(volume = volume, 
-                issue = issue,
-                pub_year = pub_year,
-                pub_month = pub_month,
-                journal_title = journal_title,
-                article_title = article_title,
-                abstract_text = abstract_text,
-                affiliation = affiliation,
-                abstract_hash = hash(abstract_text),
-                abstract_alpha = strip_nonalpha(abstract_text),
-                pmid = pmid)
-
-
-def getArticleRows(webEnv, start_result=0, num_results = 10):
-    return extractInfo(fetchWebEnv(webEnv, start_result, num_results))
-
-def create_sql_connection():
-    conn = sqlite3.connect(RESULT_FILE)
-    c = conn.cursor()
-    # Create table
-    table_names = map(lambda x : x[0], c.execute("select name from sqlite_master where type = 'table'").fetchall())
-    if 'results' not in table_names:
-        c.execute(getCreateTableQuery('results', False))
-
-    c.execute(getCreateTableQuery('temp_new_results', True))
-    return (conn, c)
-    
-def getResults(mindate, maxdate, start_chunk = 0):
+def getResults(mindate, maxdate, start_chunk = 1):
     chunk_size = 1000
-    start_chunk = int(start_chunk)
-    webEnv, count = getSearchWebEnv(mindate, maxdate)
+    start_chunk = int(start_chunk) - 1
+    query_key, webEnv, count = getSearchWebEnv(mindate, maxdate)
     log('Total results:', count)
     num_chunks = (count / chunk_size) + 1
     results = {}
 
-    (conn, c) = create_sql_connection()
-
     for i in xrange(start_chunk, num_chunks):
-        log('Chunk ', i, 'of', num_chunks)
-        row_data = getArticleRows(webEnv, start_result = i*chunk_size, num_results = chunk_size)
-        log('\tAbstracts: ', len(row_data))
-        c.execute('DELETE FROM temp_new_results')
-        c.executemany('INSERT INTO temp_new_results VALUES (' + ','.join(map(lambda x : '?', column_headers)) + ')', row_data)
-        res = c.execute('INSERT INTO results SELECT * FROM temp_new_results WHERE abstract_hash NOT IN (SELECT abstract_hash FROM results)')
-        log('\tInsert result: ', res.rowcount)
-        # Save (commit) the changes
-        conn.commit()
+        log('Chunk ', i+1, 'of', num_chunks)
+        fetchWebEnv(query_key, webEnv, i*chunk_size, chunk_size, '%s-to-%s_%d_of_%d' % (show_date(mindate), show_date(maxdate), i+1, num_chunks))
 
-    c.execute('DROP TABLE temp_new_results')
-    conn.commit()
-    # We can also close the cursor if we are done with it
-    c.close()
-
-    log('Written.')
-
-def getCreateTableQuery(table_name, is_temp):
-    return 'CREATE ' + ('TEMP' if is_temp else '') + ' TABLE ' + table_name + ' (' \
-        + (', '.join(map(lambda x : x[0] + ' ' + x[1], columns))) + ')'
+    log('Done.')
 
 if __name__ == '__main__':
     import sys

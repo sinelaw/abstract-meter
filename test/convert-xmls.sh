@@ -1,3 +1,8 @@
-time find ../data/xmls/*.xml -type f | xargs -n1 -t -iyosi bash -c "xml-to-json -snm yosi > yosi.js"
-cd ../data/xmls
-mv *.js ../js
+#!/bin/bash
+set -e
+set -u
+
+cd $(dirname $0)/../data/xmls
+mkdir -p ../js
+pwd
+time ls -1 *.xml | xargs -n1 -P4 -t -iyosi bash -c "xml-to-json -s --no-collapse-text yosi > ../js/yosi.js"

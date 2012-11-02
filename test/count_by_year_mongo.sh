@@ -1,1 +1,1 @@
-mongo < <(echo "load('query_frequency_mongo.js'); get_frequencies_for_all_years(2008,2010,[/brain/i, /cancer/i, /heart/i]);")
+mongo query_frequency_mongo.js  count_by_year_mongo.js

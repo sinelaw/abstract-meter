@@ -1,4 +1,4 @@
-var results = get_frequencies_years(2009,2012,[/brain|cortex/i, /cancer|malignant/i, /heart|cardio/i]);
+var results = get_frequencies_years(1990,2013,[/brain|cortex/i, /cancer|malignant/i, /heart|cardio/i, /dna|gene/i]);
 
 function getValues(obj)
 {
